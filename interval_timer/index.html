@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>インターバルタイマー</title>
+<meta name="description" content="タバタ／ラウンド式のインターバルタイマー。無料・広告なし・オフラインで動きます。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="タイマー">
+<meta name="theme-color" content="#111214">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#111214; --bg2:#1c1d21; --bg3:#26272c; --fg:#f5f5f5; --muted:#9a9ca3; --accent:#ffe600; --blue:#3bb7ff;
+  --c-prep:#ffe94d; --c-work:#8cff57; --c-rest:#5bc8ff; --c-cycleRest:#c99bff; --c-cooldown:#6ff0d8; --c-done:#2a2b30;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Hiragino Sans","Noto Sans JP",sans-serif;
+  -webkit-font-smoothing:antialiased;overscroll-behavior:none;touch-action:manipulation;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit;cursor:pointer}
+#app{height:100dvh;display:grid;grid-template-rows:auto 1fr auto auto auto auto;overflow:hidden}
+
+/* header */
+.top{display:grid;grid-template-columns:56px 1fr 56px;align-items:center;
+  padding:calc(env(safe-area-inset-top) + 6px) 6px 6px;background:var(--bg)}
+.title{text-align:center;color:var(--accent);font-weight:800;line-height:1.15}
+#modeName{font-size:21px}
+#totalLeft{font-size:19px;font-variant-numeric:tabular-nums;opacity:.9}
+.icon-btn{background:none;border:0;color:var(--accent);width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:12px}
+.icon-btn:active{background:var(--bg3)}
+.icon-btn svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.icon-btn.off{color:var(--muted)}
+
+/* stage */
+#stage{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#111;transition:background .25s;min-height:0;padding:0 8px}
+.phase-prep{background:var(--c-prep)}
+.phase-work{background:var(--c-work)}
+.phase-rest{background:var(--c-rest)}
+.phase-cycleRest{background:var(--c-cycleRest)}
+.phase-cooldown{background:var(--c-cooldown)}
+.phase-done{background:var(--c-done)}
+#stage.phase-done,.next.phase-done{color:#fff}
+.phase-name{font-size:clamp(34px,12vw,66px);font-weight:900;letter-spacing:.04em;line-height:1.1}
+.clock{font-size:clamp(84px,27vw,170px);font-weight:900;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.03em;margin:6px 0}
+.sub{font-size:17px;font-weight:700;opacity:.7}
+
+/* next strip */
+.next{display:flex;align-items:baseline;justify-content:center;gap:12px;padding:10px 8px;color:#111;transition:background .25s}
+.next .next-label{font-size:14px;font-weight:700;opacity:.65}
+.next .next-name{font-size:24px;font-weight:800}
+.next .next-time{font-size:34px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+
+/* controls */
+.controls{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:12px 10px 2px;background:var(--bg2)}
+.counter{text-align:center}
+.counter .num{font-size:54px;font-weight:900;color:var(--blue);line-height:1;font-variant-numeric:tabular-nums}
+.counter .lbl{font-size:13px;color:var(--muted);margin-top:6px;font-weight:600}
+.counter.hidden{visibility:hidden}
+.main-btn{text-align:center}
+.start{width:92px;height:92px;border-radius:50%;background:var(--accent);border:6px solid var(--bg2);box-shadow:0 0 0 3px var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto}
+.start:active{transform:scale(.96)}
+.start svg{width:40px;height:40px;fill:#111}
+.start .ico-pause{display:none}
+.start.running .ico-play{display:none}
+.start.running .ico-pause{display:block}
+.main-btn .lbl{color:var(--accent);font-weight:800;font-size:16px;margin-top:6px}
+
+.secondary{display:flex;justify-content:center;gap:12px;padding:8px 12px 10px;background:var(--bg2)}
+.secondary button{background:var(--bg3);color:var(--fg);border:0;border-radius:999px;padding:9px 20px;font-size:15px;font-weight:700}
+.secondary button:active{background:#333}
+
+/* tabs */
+.tabs{display:flex;gap:8px;background:#0b0b0d;padding:8px 10px calc(env(safe-area-inset-bottom) + 8px)}
+.tab{flex:1;background:transparent;border:0;color:var(--muted);font-size:15px;font-weight:700;padding:11px 0;border-radius:14px}
+.tab.active{background:#2a2b30;color:#fff}
+
+/* settings */
+.settings{position:fixed;inset:0;background:var(--bg);z-index:20;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(env(safe-area-inset-top) + 8px) 14px calc(env(safe-area-inset-bottom) + 24px);
+  transform:translateY(100%);transition:transform .25s ease;}
+.settings.open{transform:translateY(0)}
+.settings-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 12px}
+.settings-head h2{margin:0;font-size:22px;color:var(--accent)}
+.settings-head button{background:var(--accent);color:#111;border:0;border-radius:999px;padding:9px 20px;font-size:16px;font-weight:800}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2);border-radius:14px;padding:10px 12px;margin-bottom:8px}
+.row .name{font-size:17px;font-weight:700}
+.row .cap{font-size:13px;color:var(--muted);margin-top:2px;min-height:16px}
+.row-ctl{display:flex;align-items:center;gap:6px}
+.step{width:44px;height:44px;border-radius:12px;border:0;background:var(--bg3);color:#fff;font-size:24px;font-weight:700;line-height:1}
+.step:active{background:#3a3b40}
+.row input{width:72px;height:44px;border-radius:12px;border:0;background:#0b0b0d;color:#fff;font-size:22px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text}
+.row input:focus{outline:2px solid var(--accent)}
+.row input::-webkit-outer-spin-button,.row input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.row input[type=number]{-moz-appearance:textfield}
+.unit{width:22px;color:var(--muted);font-size:14px;font-weight:700}
+.switch{position:relative;width:52px;height:32px;border-radius:999px;background:#3a3b40;border:0;transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:left .2s}
+.switch.on{background:#34c759}
+.switch.on::after{left:23px}
+.settings-foot{display:flex;align-items:center;justify-content:space-between;padding:10px 4px}
+.settings-foot .total{font-size:16px;color:var(--muted)}
+.settings-foot .total b{color:var(--accent);font-size:20px;font-variant-numeric:tabular-nums}
+.settings-foot button{background:var(--bg3);color:#fff;border:0;border-radius:999px;padding:9px 16px;font-size:14px;font-weight:700}
+.note{color:var(--muted);font-size:13px;line-height:1.6;padding:6px 4px}
+.sec{color:var(--accent);font-size:16px;margin:18px 4px 8px}
+.row.col{flex-direction:column;align-items:stretch;gap:8px}
+.row input.url{width:100%;height:44px;font-size:14px;font-weight:600;text-align:left;padding:0 10px}
+.btns{display:flex;gap:8px}
+.btns button{flex:1;background:var(--bg3);color:#fff;border:0;border-radius:12px;padding:10px 0;font-size:14px;font-weight:700}
+.btns button:active{background:#3a3b40}
+.log-list{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.log-list .item{display:flex;justify-content:space-between;gap:8px;color:#ddd;font-variant-numeric:tabular-nums}
+.log-list .st{color:var(--muted);white-space:nowrap}.log-list .st.ok{color:#34c759}.log-list .st.ng{color:#ff9f0a}
+.log-list .empty{color:var(--muted)}
+
+/* install hint */
+.hint{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 86px);background:#fff;color:#111;border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.5;box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:15;display:none}
+.hint.show{display:block}
+.hint b{color:#0a66c2}
+.hint button{position:absolute;top:6px;right:8px;background:none;border:0;font-size:20px;color:#666}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <button class="icon-btn" id="btnSettings" aria-label="設定">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <div class="title"><div id="modeName">タバタ</div><div id="totalLeft">00:00</div></div>
+    <button class="icon-btn" id="btnSound" aria-label="音の切り替え">
+      <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path class="wave" d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/><path class="mute" d="M22 9l-6 6M16 9l6 6" style="display:none"/></svg>
+    </button>
+  </header>
+
+  <main id="stage" class="phase-prep">
+    <div class="phase-name" id="phaseName">準備</div>
+    <div class="clock" id="clock">00:05</div>
+    <div class="sub" id="roundInfo"></div>
+  </main>
+
+  <section id="next" class="next phase-work">
+    <div class="next-label">次</div>
+    <div class="next-name" id="nextName">ワークアウト</div>
+    <div class="next-time" id="nextTime">00:20</div>
+  </section>
+
+  <section class="controls">
+    <div class="counter"><div class="num" id="roundsLeft">4</div><div class="lbl">残りラウンド数</div></div>
+    <div class="main-btn">
+      <button id="btnStart" class="start" aria-label="スタート">
+        <svg class="ico-play" viewBox="0 0 24 24"><path d="M7 4v16l14-8z"/></svg>
+        <svg class="ico-pause" viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+      </button>
+      <div class="lbl" id="startLbl">スタート</div>
+    </div>
+    <div class="counter" id="cycleBox"><div class="num" id="cyclesLeft">2</div><div class="lbl">残りサイクル数</div></div>
+  </section>
+
+  <div class="secondary">
+    <button id="btnReset">リセット</button>
+    <button id="btnSkip">スキップ</button>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab active" data-mode="tabata">タバタ</button>
+    <button class="tab" data-mode="round">ラウンド式</button>
+  </nav>
+</div>
+
+<div id="settings" class="settings" aria-hidden="true">
+  <div class="settings-head">
+    <h2 id="settingsTitle">タバタ の設定</h2>
+    <button id="btnCloseSettings">完了</button>
+  </div>
+  <div id="rows"></div>
+  <div class="row">
+    <div><div class="name">音</div><div class="cap">残り 3 秒と切り替わりで鳴ります</div></div>
+    <button class="switch on" id="swSound" aria-label="音"></button>
+  </div>
+  <h3 class="sec">記録</h3>
+  <div class="row col">
+    <div><div class="name">記録の送り先</div><div class="cap">Google Apps Script の URL（/exec で終わるもの）。この端末にだけ保存されます</div></div>
+    <input type="url" class="url" id="inLogUrl" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
+    <div class="btns"><button id="btnLogTest">接続を確かめる</button><button id="btnLogSend">今すぐ送る</button></div>
+    <div class="cap" id="logStatus"></div>
+  </div>
+  <div class="row col">
+    <div class="name">最近の記録 <span id="logCount" class="cap" style="display:inline"></span></div>
+    <div id="logList" class="log-list"></div>
+  </div>
+  <div class="settings-foot">
+    <div class="total">合計 <b id="settingsTotal">00:00</b></div>
+    <button id="btnDefaults">既定に戻す</button>
+  </div>
+  <p class="note">設定はこの端末に保存されます。ホーム画面に追加すると全画面のアプリとして使えます。</p>
+</div>
+
+<div id="installHint" class="hint">
+  <button id="hintClose" aria-label="閉じる">×</button>
+  Safari の <b>共有ボタン</b> → <b>「ホーム画面に追加」</b> で、アプリとして全画面で使えます。
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- 設定の定義 ---------- */
+var MODES = {
+  tabata: { name:'タバタ',    defaults:{ prep:5, work:20, rest:10, rounds:4, cycles:2, cycleRest:60, cooldown:3 } },
+  round:  { name:'ラウンド式', defaults:{ prep:5, work:30, rest:15, rounds:6, cycles:1, cycleRest:0,  cooldown:5 } }
+};
+var FIELDS = [
+  { key:'prep',      label:'準備',           unit:'秒', step:5,  min:0, max:3600, time:true },
+  { key:'work',      label:'ワークアウト',   unit:'秒', step:5,  min:1, max:3600, time:true },
+  { key:'rest',      label:'休憩',           unit:'秒', step:5,  min:0, max:3600, time:true },
+  { key:'rounds',    label:'ラウンド数',     unit:'回', step:1,  min:1, max:99 },
+  { key:'cycles',    label:'サイクル数',     unit:'回', step:1,  min:1, max:99 },
+  { key:'cycleRest', label:'サイクルの休憩', unit:'秒', step:30, min:0, max:3600, time:true },
+  { key:'cooldown',  label:'クールダウン',   unit:'秒', step:5,  min:0, max:3600, time:true }
+];
+var PHASE_NAME = { prep:'準備', work:'ワークアウト', rest:'休憩', cycleRest:'サイクル休憩', cooldown:'クールダウン', done:'完了' };
+var STORE_KEY = 'itimer.v1';
+
+/* ---------- 保存 ---------- */
+function load(){
+  var s = null;
+  try { s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch(e){}
+  if(!s || typeof s !== 'object') s = {};
+  if(!MODES[s.mode]) s.mode = 'tabata';
+  if(typeof s.sound !== 'boolean') s.sound = true;
+  if(typeof s.logUrl !== 'string') s.logUrl = '';
+  if(!s.lastSend || typeof s.lastSend !== 'object') s.lastSend = null;
+  Object.keys(MODES).forEach(function(m){
+    var d = MODES[m].defaults, cur = s[m] || {}, out = {};
+    FIELDS.forEach(function(f){
+      var v = Number(cur[f.key]);
+      out[f.key] = isFinite(v) ? clamp(f, Math.round(v)) : d[f.key];
+    });
+    s[m] = out;
+  });
+  return s;
+}
+function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch(e){} }
+function clamp(f, v){ return Math.max(f.min, Math.min(f.max, v)); }
+
+/* ---------- 工程表 ---------- */
+function buildSchedule(cfg){
+  var ph = [];
+  if(cfg.prep > 0) ph.push({ type:'prep', dur:cfg.prep });
+  for(var c=1; c<=cfg.cycles; c++){
+    for(var r=1; r<=cfg.rounds; r++){
+      ph.push({ type:'work', dur:cfg.work, round:r, cycle:c });
+      if(r < cfg.rounds && cfg.rest > 0) ph.push({ type:'rest', dur:cfg.rest, round:r, cycle:c });
+    }
+    if(c < cfg.cycles && cfg.cycleRest > 0) ph.push({ type:'cycleRest', dur:cfg.cycleRest, cycle:c });
+  }
+  if(cfg.cooldown > 0) ph.push({ type:'cooldown', dur:cfg.cooldown });
+  var acc = 0;
+  ph.forEach(function(p){ p.start = acc; acc += p.dur; p.end = acc; });
+  return { phases: ph, total: acc };
+}
+
+/* ---------- 状態 ---------- */
+var store = load();
+var mode = store.mode;
+var cfg = store[mode];
+var sched = buildSchedule(cfg);
+var running = false, elapsedBase = 0, resumedAt = 0;
+var lastPhaseIdx = -1, lastBeepKey = '', doneSounded = false;
+var rafId = 0;
+var sessionStart = 0;
+
+function nowSec(){ return Date.now() / 1000; }
+function elapsed(){ return elapsedBase + (running ? nowSec() - resumedAt : 0); }
+function locate(e){
+  var ph = sched.phases;
+  for(var i=0; i<ph.length; i++){ if(e < ph[i].end) return { idx:i, remaining: ph[i].end - e }; }
+  return { idx: ph.length, remaining: 0 };
+}
+function fmt(s){
+  s = Math.max(0, Math.ceil(s - 1e-6));
+  var h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  var mm = (h ? (m<10?'0':'') : (m<10?'0':'')) + m, ss = (x<10?'0':'') + x;
+  return (h ? h + ':' : '') + mm + ':' + ss;
+}
+function fmtJa(s){
+  var m = Math.floor(s/60), x = s%60;
+  if(m === 0) return x + '秒';
+  return m + '分' + (x ? x + '秒' : '');
+}
+
+/* ---------- 音 ---------- */
+var ac = null;
+function audioInit(){
+  try{
+    if(!ac){ ac = new (window.AudioContext || window.webkitAudioContext)(); }
+    if(ac.state === 'suspended') ac.resume();
+    if(navigator.audioSession){ try{ navigator.audioSession.type = 'playback'; }catch(e){} }
+    /* iOS の解錠用に無音を鳴らす */
+    var b = ac.createBuffer(1, 1, 22050), src = ac.createBufferSource();
+    src.buffer = b; src.connect(ac.destination); src.start(0);
+  }catch(e){}
+}
+function tone(freq, dur, when, type, gain){
+  if(!store.sound || !ac) return;
+  try{
+    var t = ac.currentTime + (when || 0);
+    var o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    gain = gain || 0.6;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+    g.gain.setValueAtTime(gain, t + Math.max(0.02, dur - 0.04));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  }catch(e){}
+}
+var SOUNDS = {
+  tick:      function(){ tone(1000, 0.12, 0, 'square', 0.35); },
+  work:      function(){ tone(1500, 0.16, 0, 'square', 0.5); tone(1500, 0.16, 0.2, 'square', 0.5); tone(2000, 0.3, 0.4, 'square', 0.5); },
+  rest:      function(){ tone(700, 0.5, 0, 'sine', 0.7); },
+  cycleRest: function(){ tone(600, 0.3, 0, 'sine', 0.7); tone(500, 0.45, 0.32, 'sine', 0.7); },
+  cooldown:  function(){ tone(800, 0.45, 0, 'sine', 0.7); },
+  prep:      function(){ tone(900, 0.2, 0, 'sine', 0.6); },
+  done:      function(){ tone(880, 0.15, 0, 'square', 0.5); tone(1100, 0.15, 0.18, 'square', 0.5); tone(1320, 0.6, 0.36, 'square', 0.5); }
+};
+
+/* ---------- 画面消灯の防止 ---------- */
+var wl = null;
+function wakeOn(){
+  if(!('wakeLock' in navigator) || wl) return;
+  navigator.wakeLock.request('screen').then(function(l){
+    wl = l; l.addEventListener('release', function(){ wl = null; });
+  }).catch(function(){});
+}
+function wakeOff(){ if(wl){ wl.release().catch(function(){}); wl = null; } }
+
+/* ---------- 描画 ---------- */
+var $ = function(id){ return document.getElementById(id); };
+var el = {
+  stage:$('stage'), phaseName:$('phaseName'), clock:$('clock'), roundInfo:$('roundInfo'),
+  next:$('next'), nextName:$('nextName'), nextTime:$('nextTime'),
+  roundsLeft:$('roundsLeft'), cyclesLeft:$('cyclesLeft'), cycleBox:$('cycleBox'),
+  btnStart:$('btnStart'), startLbl:$('startLbl'), modeName:$('modeName'), totalLeft:$('totalLeft'),
+  btnSound:$('btnSound')
+};
+var cache = {};
+function setText(node, key, v){ if(cache[key] !== v){ cache[key] = v; node.textContent = v; } }
+function setClass(node, key, v){ if(cache[key] !== v){ cache[key] = v; node.className = v; } }
+
+function render(){
+  var e = elapsed(), loc = locate(e), ph = sched.phases, n = ph.length;
+  setText(el.modeName, 'modeName', MODES[mode].name);
+  setText(el.totalLeft, 'totalLeft', fmt(sched.total - e));
+  el.cycleBox.classList.toggle('hidden', cfg.cycles <= 1);
+
+  if(loc.idx >= n){
+    setClass(el.stage, 'stage', 'phase-done');
+    setText(el.phaseName, 'phaseName', PHASE_NAME.done);
+    setText(el.clock, 'clock', '00:00');
+    setText(el.roundInfo, 'roundInfo', 'おつかれさまでした');
+    setClass(el.next, 'next', 'next phase-done');
+    setText(el.nextName, 'nextName', '終了');
+    setText(el.nextTime, 'nextTime', fmt(sched.total));
+    setText(el.roundsLeft, 'roundsLeft', '0');
+    setText(el.cyclesLeft, 'cyclesLeft', '0');
+    if(running){ running = false; elapsedBase = sched.total; wakeOff(); }
+    if(!doneSounded){ doneSounded = true; if(lastPhaseIdx !== -1){ SOUNDS.done(); addRecord(); } }
+    lastPhaseIdx = n;
+    syncStartBtn();
+    return;
+  }
+
+  var p = ph[loc.idx], secs = Math.ceil(loc.remaining - 1e-6);
+  if(loc.idx !== lastPhaseIdx){
+    if(lastPhaseIdx !== -1 && running) (SOUNDS[p.type] || function(){})();
+    lastPhaseIdx = loc.idx;
+  }
+  if(running && secs >= 1 && secs <= 3 && secs < p.dur){
+    var key = loc.idx + ':' + secs;
+    if(key !== lastBeepKey){ lastBeepKey = key; SOUNDS.tick(); }
+  }
+
+  setClass(el.stage, 'stage', 'phase-' + p.type);
+  setText(el.phaseName, 'phaseName', PHASE_NAME[p.type]);
+  setText(el.clock, 'clock', fmt(loc.remaining));
+
+  var info = '';
+  if(p.type === 'work' || p.type === 'rest'){
+    info = 'ラウンド ' + p.round + ' / ' + cfg.rounds;
+    if(cfg.cycles > 1) info += '　サイクル ' + p.cycle + ' / ' + cfg.cycles;
+  } else if(p.type === 'prep'){ info = 'まもなく開始'; }
+  else if(p.type === 'cycleRest'){ info = 'サイクル ' + p.cycle + ' 終了　次はサイクル ' + (p.cycle + 1); }
+  else if(p.type === 'cooldown'){ info = '最後に体をほぐす'; }
+  setText(el.roundInfo, 'roundInfo', info);
+
+  var nx = ph[loc.idx + 1];
+  if(nx){
+    setClass(el.next, 'next', 'next phase-' + nx.type);
+    setText(el.nextName, 'nextName', PHASE_NAME[nx.type]);
+    setText(el.nextTime, 'nextTime', fmt(nx.dur));
+  } else {
+    setClass(el.next, 'next', 'next phase-done');
+    setText(el.nextName, 'nextName', '終了');
+    setText(el.nextTime, 'nextTime', '');
+  }
+
+  var rl, cl;
+  if(p.type === 'work'){ rl = cfg.rounds - p.round + 1; cl = cfg.cycles - p.cycle + 1; }
+  else if(p.type === 'rest'){ rl = cfg.rounds - p.round; cl = cfg.cycles - p.cycle + 1; }
+  else if(p.type === 'cycleRest'){ rl = cfg.rounds; cl = cfg.cycles - p.cycle; }
+  else if(p.type === 'prep'){ rl = cfg.rounds; cl = cfg.cycles; }
+  else { rl = 0; cl = 0; }
+  setText(el.roundsLeft, 'roundsLeft', String(rl));
+  setText(el.cyclesLeft, 'cyclesLeft', String(cl));
+  syncStartBtn();
+}
+function syncStartBtn(){
+  el.btnStart.classList.toggle('running', running);
+  var e = elapsed();
+  var lbl = running ? '一時停止' : (e >= sched.total ? 'もう一度' : (e > 0 ? '再開' : 'スタート'));
+  setText(el.startLbl, 'startLbl', lbl);
+}
+function loop(){
+  cancelAnimationFrame(rafId);
+  if(!running) return;
+  render();
+  rafId = requestAnimationFrame(loop);
+}
+
+/* ---------- 操作 ---------- */
+function start(){
+  audioInit();
+  if(elapsed() >= sched.total) reset();
+  if(elapsedBase === 0) sessionStart = Date.now();
+  if(elapsedBase === 0 && lastPhaseIdx <= 0){ var first = sched.phases[0]; if(first) (SOUNDS[first.type] || function(){})(); }
+  running = true; resumedAt = nowSec();
+  wakeOn(); render(); loop();
+}
+function pause(){
+  if(!running) return;
+  elapsedBase = elapsed(); running = false;
+  cancelAnimationFrame(rafId); wakeOff(); render();
+}
+function reset(){
+  running = false; cancelAnimationFrame(rafId);
+  elapsedBase = 0; lastPhaseIdx = -1; lastBeepKey = ''; doneSounded = false; sessionStart = 0;
+  wakeOff(); render();
+}
+function skip(){
+  var loc = locate(elapsed());
+  if(loc.idx >= sched.phases.length) return;
+  elapsedBase = sched.phases[loc.idx].end; resumedAt = nowSec();
+  render();
+}
+function setMode(m){
+  if(!MODES[m]) return;
+  mode = m; store.mode = m; cfg = store[m]; sched = buildSchedule(cfg); save();
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.mode === m); });
+  reset();
+}
+function applyCfg(){
+  sched = buildSchedule(cfg); save(); reset(); renderSettingsTotal();
+}
+
+el.btnStart.addEventListener('click', function(){ running ? pause() : start(); });
+$('btnReset').addEventListener('click', reset);
+$('btnSkip').addEventListener('click', skip);
+document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click', function(){ setMode(t.dataset.mode); }); });
+document.addEventListener('keydown', function(ev){ if(ev.code === 'Space' && !settingsOpen){ ev.preventDefault(); running ? pause() : start(); } });
+
+function syncSoundBtn(){
+  el.btnSound.classList.toggle('off', !store.sound);
+  el.btnSound.querySelector('.wave').style.display = store.sound ? '' : 'none';
+  el.btnSound.querySelector('.mute').style.display = store.sound ? 'none' : '';
+  $('swSound').classList.toggle('on', store.sound);
+}
+function toggleSound(){ store.sound = !store.sound; save(); syncSoundBtn(); if(store.sound){ audioInit(); SOUNDS.tick(); } }
+el.btnSound.addEventListener('click', toggleSound);
+$('swSound').addEventListener('click', toggleSound);
+
+/* ---------- 設定画面 ---------- */
+var settingsOpen = false;
+var settingsEl = $('settings');
+function openSettings(){
+  pause();
+  $('settingsTitle').textContent = MODES[mode].name + ' の設定';
+  renderRows(); renderSettingsTotal(); renderLog(); updateLogStatus(); flushQueue();
+  settingsEl.classList.add('open'); settingsEl.setAttribute('aria-hidden', 'false'); settingsOpen = true;
+}
+function closeSettings(){
+  settingsEl.classList.remove('open'); settingsEl.setAttribute('aria-hidden', 'true'); settingsOpen = false;
+  render();
+}
+$('btnSettings').addEventListener('click', openSettings);
+$('btnCloseSettings').addEventListener('click', closeSettings);
+$('btnDefaults').addEventListener('click', function(){
+  var d = MODES[mode].defaults; FIELDS.forEach(function(f){ cfg[f.key] = d[f.key]; });
+  applyCfg(); renderRows();
+});
+
+function renderRows(){
+  var box = $('rows'); box.innerHTML = '';
+  FIELDS.forEach(function(f){
+    var row = document.createElement('div'); row.className = 'row';
+    row.innerHTML =
+      '<div><div class="name">' + f.label + '</div><div class="cap" id="cap-' + f.key + '"></div></div>' +
+      '<div class="row-ctl">' +
+        '<button class="step" data-k="' + f.key + '" data-d="-1" aria-label="減らす">−</button>' +
+        '<input type="number" inputmode="numeric" pattern="[0-9]*" id="in-' + f.key + '" min="' + f.min + '" max="' + f.max + '">' +
+        '<button class="step" data-k="' + f.key + '" data-d="1" aria-label="増やす">＋</button>' +
+        '<span class="unit">' + f.unit + '</span>' +
+      '</div>';
+    box.appendChild(row);
+    var input = row.querySelector('input');
+    input.value = cfg[f.key];
+    input.addEventListener('input', function(){
+      var v = parseInt(input.value, 10);
+      if(!isFinite(v)) return;
+      cfg[f.key] = clamp(f, v); applyCfg(); updateCap(f);
+    });
+    input.addEventListener('blur', function(){ input.value = cfg[f.key]; });
+    input.addEventListener('keydown', function(ev){ if(ev.key === 'Enter') input.blur(); });
+    row.querySelectorAll('.step').forEach(function(b){
+      b.addEventListener('click', function(){
+        var d = Number(b.dataset.d), cur = cfg[f.key], s = f.step;
+        var v = d > 0 ? Math.floor(cur / s) * s + s : Math.ceil(cur / s) * s - s;
+        cfg[f.key] = clamp(f, v); input.value = cfg[f.key]; applyCfg(); updateCap(f);
+      });
+    });
+    updateCap(f);
+  });
+}
+function updateCap(f){
+  var cap = $('cap-' + f.key); if(!cap) return;
+  var v = cfg[f.key];
+  if(f.time){ cap.textContent = v >= 60 ? '= ' + fmtJa(v) : (v === 0 ? 'なし' : ''); }
+  else if(f.key === 'cycleRest'){ cap.textContent = ''; }
+  else { cap.textContent = ''; }
+  if(f.key === 'cycleRest' && cfg.cycles <= 1) cap.textContent = 'サイクルが 2 以上のときに使います';
+  if(f.key === 'cycles'){ var cr = $('cap-cycleRest'); if(cr) updateCapKey('cycleRest'); }
+}
+function updateCapKey(k){ var f = FIELDS.filter(function(x){ return x.key === k; })[0]; if(f) updateCap(f); }
+function renderSettingsTotal(){ $('settingsTotal').textContent = fmt(sched.total); }
+
+/* ---------- ホーム画面追加の案内 ---------- */
+(function(){
+  var ua = navigator.userAgent;
+  var isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  var dismissed = false; try{ dismissed = localStorage.getItem('itimer.hint') === '1'; }catch(e){}
+  if(isIOS && !standalone && !dismissed){ $('installHint').classList.add('show'); }
+  $('hintClose').addEventListener('click', function(){
+    $('installHint').classList.remove('show');
+    try{ localStorage.setItem('itimer.hint', '1'); }catch(e){}
+  });
+})();
+
+/* ---------- 記録（端末に残し、Apps Script へ送る） ---------- */
+var LOG_KEY = 'itimer.log', QUEUE_KEY = 'itimer.queue';
+function loadJSON(k, d){ try{ var v = JSON.parse(localStorage.getItem(k) || 'null'); return Array.isArray(v) ? v : d; }catch(e){ return d; } }
+function saveJSON(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+var log = loadJSON(LOG_KEY, []), queue = loadJSON(QUEUE_KEY, []), sending = false;
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function ymd(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function hm(d){ return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+function mdhm(d){ return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hm(d); }
+function esc(t){ return String(t).replace(/[&<>"]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+function cfgText(c){
+  return '準備' + c.prep + '・運動' + c.work + '・休憩' + c.rest + '・' + c.rounds + 'R×' + c.cycles + 'C' +
+    (c.cycles > 1 ? '・間' + c.cycleRest : '') + '・冷' + c.cooldown;
+}
+function addRecord(){
+  var end = new Date(), start = sessionStart ? new Date(sessionStart) : end;
+  var rec = {
+    id: end.getTime().toString(36) + Math.random().toString(36).slice(2, 6),
+    date: ymd(start), start: hm(start), end: hm(end),
+    mode: MODES[mode].name, total: sched.total, totalText: fmt(sched.total),
+    config: cfgText(cfg), ts: end.toISOString()
+  };
+  log.push(rec); if(log.length > 1000) log = log.slice(-1000); saveJSON(LOG_KEY, log);
+  queue.push(rec); saveJSON(QUEUE_KEY, queue);
+  flushQueue();
+}
+function postJSON(url, obj){
+  return fetch(url, { method:'POST', body: JSON.stringify(obj), redirect:'follow' }).then(function(r){
+    return r.text().then(function(t){ var j = {}; try{ j = JSON.parse(t); }catch(e){} if(!r.ok) throw new Error('http ' + r.status); return j; });
+  });
+}
+function flushQueue(){
+  var url = store.logUrl;
+  if(!url || !queue.length || sending || navigator.onLine === false){ updateLogStatus(); return; }
+  sending = true; updateLogStatus();
+  var batch = queue.slice(0, 50);
+  postJSON(url, { records: batch }).then(function(j){
+    if(!j.ok) throw new Error('bad response');
+    var ids = {}; batch.forEach(function(b){ ids[b.id] = 1; });
+    queue = queue.filter(function(q){ return !ids[q.id]; }); saveJSON(QUEUE_KEY, queue);
+    store.lastSend = { ok:true, at: Date.now() };
+  }).catch(function(){
+    store.lastSend = { ok:false, at: Date.now() };
+  }).then(function(){
+    sending = false; save(); updateLogStatus(); renderLog();
+    if(queue.length && store.lastSend && store.lastSend.ok) flushQueue();
+  });
+}
+function pingLog(){
+  var url = store.logUrl, s = $('logStatus');
+  if(!url){ s.textContent = 'URL を入れてください'; return; }
+  s.textContent = '確かめています…';
+  postJSON(url, { type:'ping' }).then(function(j){
+    s.textContent = (j.ok && j.ping) ? '接続OK。記録を送れます' : '応答が違います。URL と「アクセスできるユーザー: 全員」を確かめてください';
+  }).catch(function(){ s.textContent = '接続できません。URL を確かめてください'; });
+}
+function updateLogStatus(){
+  var s = $('logStatus'); if(!s) return;
+  var parts = [];
+  if(!store.logUrl) parts.push('送り先が未設定です。記録は端末に残り、設定後にまとめて送れます');
+  if(queue.length) parts.push('未送信 ' + queue.length + ' 件');
+  if(sending) parts.push('送信中…');
+  else if(store.lastSend) parts.push('最後の送信: ' + (store.lastSend.ok ? '成功' : '失敗') + ' ' + mdhm(new Date(store.lastSend.at)));
+  s.textContent = parts.join('　');
+}
+function renderLog(){
+  var list = $('logList'); if(!list) return;
+  list.innerHTML = '';
+  var inQ = {}; queue.forEach(function(q){ inQ[q.id] = 1; });
+  var recent = log.slice(-5).reverse();
+  if(!recent.length) list.innerHTML = '<div class="empty">まだ記録はありません。タイマーが完了すると 1 件増えます</div>';
+  recent.forEach(function(r){
+    var d = document.createElement('div'); d.className = 'item';
+    var sent = !inQ[r.id];
+    d.innerHTML = '<span>' + esc(r.date.slice(5).replace('-', '/')) + ' ' + esc(r.start) + '〜' + esc(r.end) + '</span>' +
+      '<span>' + esc(r.mode) + ' ' + esc(r.totalText) + '</span>' +
+      '<span class="st ' + (sent ? 'ok' : 'ng') + '">' + (sent ? '送信済' : '未送信') + '</span>';
+    list.appendChild(d);
+  });
+  $('logCount').textContent = log.length ? '全 ' + log.length + ' 件' : '';
+}
+(function(){
+  var input = $('inLogUrl');
+  input.value = store.logUrl;
+  input.addEventListener('change', function(){
+    store.logUrl = input.value.trim(); input.value = store.logUrl; save(); updateLogStatus();
+    if(store.logUrl) flushQueue();
+  });
+  $('btnLogTest').addEventListener('click', pingLog);
+  $('btnLogSend').addEventListener('click', function(){ store.lastSend = null; flushQueue(); });
+  window.addEventListener('online', flushQueue);
+})();
+
+/* ---------- 復帰時の補正 ---------- */
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible'){
+    if(running){ wakeOn(); if(ac && ac.state === 'suspended') ac.resume(); loop(); }
+    render(); flushQueue();
+  }
+});
+window.addEventListener('pageshow', function(){ render(); });
+
+/* ---------- 起動 ---------- */
+document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.mode === mode); });
+syncSoundBtn();
+render();
+flushQueue();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('./sw.js').catch(function(){}); });
+}
+})();
+</script>
+</body>
+</html>
