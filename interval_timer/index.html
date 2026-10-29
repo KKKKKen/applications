@@ -299,14 +299,29 @@ function fmtJa(s){
 var ac = null;
 function audioInit(){
   try{
-    if(!ac){ ac = new (window.AudioContext || window.webkitAudioContext)(); }
-    if(ac.state === 'suspended') ac.resume();
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(ac && ac.state === 'closed') ac = null;
+    if(!ac){ ac = new AC(); }
     if(navigator.audioSession){ try{ navigator.audioSession.type = 'playback'; }catch(e){} }
+    /* iOS は裏に回ると 'interrupted' になる。'suspended' 以外も含めて起こし直す */
+    if(ac.state !== 'running'){ ac.resume().catch(function(){}); }
     /* iOS の解錠用に無音を鳴らす */
     var b = ac.createBuffer(1, 1, 22050), src = ac.createBufferSource();
     src.buffer = b; src.connect(ac.destination); src.start(0);
+    /* それでも動かなければ作り直す（タップの中なので新しい装置は使える） */
+    setTimeout(function(){
+      if(ac && ac.state !== 'running'){
+        try{ ac.close(); }catch(e){}
+        ac = new AC();
+        var b2 = ac.createBuffer(1, 1, 22050), s2 = ac.createBufferSource();
+        s2.buffer = b2; s2.connect(ac.destination); s2.start(0);
+      }
+    }, 250);
   }catch(e){}
 }
+/* どのタップでも音の装置を起こし直す（開き直した後の無音対策） */
+document.addEventListener('touchend', function(){ if(ac && ac.state !== 'running') audioInit(); }, { passive:true });
+document.addEventListener('click', function(){ if(ac && ac.state !== 'running') audioInit(); });
 function tone(freq, dur, when, type, gain){
   if(!store.sound || !ac) return;
   try{
@@ -659,7 +674,7 @@ function renderLog(){
 /* ---------- 復帰時の補正 ---------- */
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState === 'visible'){
-    if(running){ wakeOn(); if(ac && ac.state === 'suspended') ac.resume(); loop(); }
+    if(running){ wakeOn(); if(ac && ac.state !== 'running') ac.resume().catch(function(){}); loop(); }
     render(); flushQueue();
   }
 });

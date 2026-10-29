@@ -1,5 +1,5 @@
 /* オフライン用の service worker。CACHE の番号を上げると全員が新版に切り替わる */
-var CACHE = "itimer-v1";
+var CACHE = "itimer-v2";
 var ASSETS = [
   "./",
   "./index.html",
